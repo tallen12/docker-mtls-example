@@ -1,0 +1,16 @@
+services:
+  nginx:
+    image: nginx:latest
+    volumes:
+      - ${PWD}/nginx/nginx.conf:/etc/nginx/nginx.conf:ro
+      - ${PWD}/nginx/templates/:/etc/nginx/templates/:ro
+      - ${PWD}/certs/localhost.cert:/etc/nginx/certs/server.crt:ro
+      - ${PWD}/certs/localhost-key.pem:/etc/nginx/certs/server.key:ro
+      - ${PWD}/certs/ca/intermediate-ca.cert:/etc/nginx/certs/ca.crt:ro
+      - ${PWD}/logs/:/var/log/nginx/
+    restart: unless-stopped
+    ports:
+      - 8443:443
+      - 8080:80
+    environment:
+     - SERVICE_DOMAIN=localhost

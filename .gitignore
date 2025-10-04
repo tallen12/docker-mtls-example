@@ -9,6 +9,8 @@ wheels/
 # Virtual environments
 .venv
 .python-version
+
 .vscode
 certs/
 csr/
+logs
