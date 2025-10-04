@@ -65,7 +65,7 @@ app = App()
 def generate_root_ca(
     subject: SubjectX509,
     valid_for: TimePeriod = timedelta(days=365),
-    certs_path=Path("./certs/"),
+    certs_path=Path("./certs/ca/"),
 ):
     """
     Generates a self-signed root CA certificate and saves it to the specified path.
@@ -73,7 +73,7 @@ def generate_root_ca(
     Args:
         subject (SubjectX509): The subject information for the CA certificate.
         valid_for (TimePeriod, optional): The validity period of the CA certificate. Defaults to 365 days.
-        certs_path (Path, optional): The directory where the CA certificate and key will be saved. Defaults to "./certs/".
+        certs_path (Path, optional): The directory where the CA certificate and key will be saved. Defaults to "./certs/ca/".
 
     Returns:
         None
@@ -82,7 +82,7 @@ def generate_root_ca(
     cert = make_self_signed_root_ca(subject=subject, private_key=key, valid_for=valid_for)
     certs_path.mkdir(parents=True, exist_ok=True)
     cert_path = certs_path / "root-ca.cert"
-    key_path = certs_path / "root-private-key.pem"
+    key_path = certs_path / "root-private-key.key"
     save_certs(key_path=key_path, key=key, cert_path=cert_path, cert=cert)
 
 
@@ -90,7 +90,8 @@ def generate_root_ca(
 def generate_intermediate_ca(
     subject: SubjectX509,
     valid_for: TimePeriod = timedelta(days=365),
-    certs_path=Path("./certs/"),
+    certs_path=Path("./certs/ca/"),
+    intermediate_cert_name: str = "intermediate",
 ):
     """
     Generates an intermediate CA certificate and private key.
@@ -98,16 +99,16 @@ def generate_intermediate_ca(
     Args:
         subject (SubjectX509): The subject information for the certificate.
         valid_for (TimePeriod, optional): The validity period of the certificate. Defaults to timedelta(days=365).
-        certs_path (Path, optional): The path where the certificates will be saved. Defaults to Path("./certs/").
-
+        certs_path (Path, optional): The path where the certificates will be saved. Defaults to Path("./certs/ca").
+        intermediate_cert_name (str, optional): The name of the intermediate CA certificate file. Defaults to "intermediate".
     Returns:
         None
     """
     key = generate_rsa_key()
     cert = make_self_signed_root_ca(subject=subject, private_key=key, valid_for=valid_for)
     certs_path.mkdir(parents=True, exist_ok=True)
-    cert_path = certs_path / "intermediate-ca.cert"
-    key_path = certs_path / "intermediate-private-key.pem"
+    cert_path = certs_path / f"{intermediate_cert_name}-ca.cert"
+    key_path = certs_path / f"{intermediate_cert_name}-private.key"
     save_certs(key_path=key_path, key=key, cert_path=cert_path, cert=cert)
 
 
@@ -132,14 +133,14 @@ def generate_csr(domain: str, subject: SubjectX509, csrs_path=Path("./csr/"), ce
     csrs_path.mkdir(parents=True, exist_ok=True)
     certs_path.mkdir(parents=True, exist_ok=True)
     csr_path = csrs_path / f"{domain}.csr"
-    key_path = certs_path / f"{domain}-key.pem"
+    key_path = certs_path / f"{domain}.key"
     save_certs(key_path=key_path, key=key, cert_path=csr_path, cert=cert)
 
 
 @app.command(name="process-csrs")
 def process_csrs(
-    intermediate_ca_path: Path,
-    intermediate_ca_key_path: Path,
+    ca_path: Path,
+    ca_key_path: Path,
     csrs_path=Path("./csr/"),
     certs_path=Path("./certs"),
     valid_for: TimePeriod = timedelta(days=365),
@@ -148,8 +149,8 @@ def process_csrs(
     Process all Certificate Signing Requests (CSRs) found in csrs_path and place the resulting certificates in certs_path.
 
     Args:
-        intermediate_ca_path (Path): Path to the intermediate CA certificate.
-        intermediate_ca_key_path (Path): Path to the intermediate CA private key.
+        ca_path (Path): Path to the intermediate CA certificate.
+        ca_key_path (Path): Path to the intermediate CA private key.
         csrs_path (Path, optional): Path to the directory containing CSRs. Defaults to Path("./csr/").
         certs_path (Path, optional): Path to the directory where certificates will be saved. Defaults to Path("./certs").
         valid_for (TimePeriod, optional): Duration for which the certificate is valid. Defaults to timedelta(days=365).
@@ -159,9 +160,9 @@ def process_csrs(
     """
     csrs_path.mkdir(parents=True, exist_ok=True)
     certs_path.mkdir(parents=True, exist_ok=True)
-    with open(intermediate_ca_path, "rb") as ca_file:
+    with open(ca_path, "rb") as ca_file:
         ca_cert = x509.load_pem_x509_certificate(ca_file.read())
-    with open(intermediate_ca_key_path, "rb") as ca_key_file:
+    with open(ca_key_path, "rb") as ca_key_file:
         # This will always be a RSA key
         ca_key = cast(rsa.RSAPrivateKey, serialization.load_pem_private_key(ca_key_file.read(), password=None))
 
@@ -174,3 +175,13 @@ def process_csrs(
         cert_path = certs_path / f"{file.stem}.cert"
         with open(cert_path, "wb") as cf:
             cf.write(cert.public_bytes(serialization.Encoding.PEM))
+
+
+@app.command(name="create-ca-bundle")
+def create_ca_bundle(ca_bundle_path: Path = Path("./certs/ca-bundle.pem"), ca_certs_path: Path = Path("./certs/ca")):
+    ca_bundle_path.parent.mkdir(parents=True, exist_ok=True)
+    sorted_cas = sorted(ca_certs_path.glob("*.cert"), key=lambda path: (path.stem == "root-ca", path))
+    with open(ca_bundle_path, "wb") as ca_bundle:
+        for ca_cert in sorted_cas:
+            with open(ca_cert, "rb") as ca_file:
+                ca_bundle.write(ca_file.read())

@@ -3,6 +3,7 @@ import datetime
 from cryptography import x509
 from cryptography.hazmat.primitives import hashes
 from cryptography.hazmat.primitives.asymmetric import rsa
+from cryptography.x509.base import Certificate, CertificateSigningRequest
 
 from docker_mtls_example.scripts.cryptography.models import SubjectX509
 
@@ -10,7 +11,17 @@ from docker_mtls_example.scripts.cryptography.models import SubjectX509
 def make_csr(
     subject: SubjectX509,
     private_key: rsa.RSAPrivateKey,
-):
+) -> CertificateSigningRequest:
+    """
+    Generates a Certificate Signing Request (CSR) for the given subject and private key.
+
+    Args:
+        subject (SubjectX509): The subject information for the CSR.
+        private_key (rsa.RSAPrivateKey): The private key to use for signing the CSR.
+
+    Returns:
+        CertificateSigningRequest: The generated CSR.
+    """
     subject_name = subject.to_x509_name_cryptography()
     builder = (
         x509.CertificateSigningRequestBuilder()
@@ -28,7 +39,19 @@ def cert_from_csr(
     ca_key: rsa.RSAPrivateKey,
     ca_cert: x509.Certificate,
     valid_for: datetime.timedelta,
-):
+) -> Certificate:
+    """
+    Generate a certificate from a CSR using the provided CA key and certificate.
+
+    Args:
+        csr (CertificateSigningRequest): The CSR to sign.
+        ca_key (RSAPrivateKey): The private key of the CA used to sign the certificate.
+        ca_cert (Certificate): The CA certificate used to sign the certificate.
+        valid_for (timedelta): The duration for which the certificate should be valid.
+
+    Returns:
+        Certificate: The signed certificate.
+    """
     now = datetime.datetime.now(datetime.timezone.utc)
     if not csr.is_signature_valid:
         raise ValueError("CSR signature is invalid")
